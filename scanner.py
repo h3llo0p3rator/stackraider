@@ -12,7 +12,7 @@ import sys
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Optional, Set
+from typing import List, Dict, Optional, Set, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
 
@@ -340,6 +340,148 @@ class SecurityScanner:
         )
 
 
+# Patterns to infer injection point (parameter/header name) from code context.
+# Order matters: first match wins. (source_type, param_name).
+_INJECTION_POINT_PATTERNS = [
+    # PHP
+    (r'\$_GET\s*\[\s*[\'"]([^\'"]+)[\'"]\s*\]', 'get'),
+    (r'\$_POST\s*\[\s*[\'"]([^\'"]+)[\'"]\s*\]', 'post'),
+    (r'\$_REQUEST\s*\[\s*[\'"]([^\'"]+)[\'"]\s*\]', 'request'),
+    (r'\$_COOKIE\s*\[\s*[\'"]([^\'"]+)[\'"]\s*\]', 'cookie'),
+    (r'\$_SERVER\s*\[\s*[\'"]HTTP_([^\'"]+)[\'"]\s*\]', 'header'),  # param normalized to Header-Name
+    # JS/Node
+    (r'req\.query\.(\w+)', 'get'),
+    (r'req\.body\.(\w+)', 'post'),
+    (r'req\.params\.(\w+)', 'path'),
+    (r'req\.(?:headers|get)\s*\(\s*[\'"]([^\'"]+)[\'"]\s*\)', 'header'),
+    (r'req\.headers\[[\'"]([^\'"]+)[\'"]\]', 'header'),
+    # Python
+    (r'request\.args\.get\s*\(\s*[\'"]([^\'"]+)[\'"]', 'get'),
+    (r'request\.form(?:\.get)?\s*\(\s*[\'"]([^\'"]+)[\'"]', 'post'),
+    (r'request\.form\[[\'"]([^\'"]+)[\'"]\]', 'post'),
+    (r'request\.headers(?:\.get)?\s*\(\s*[\'"]([^\'"]+)[\'"]', 'header'),
+    (r'request\.headers\[[\'"]([^\'"]+)[\'"]\]', 'header'),
+]
+
+# Example payloads for location-specific exploitation (payload only; formatted by source type).
+# Key by rule_id first, then fall back to category. Every category with exploitation guidance has an example.
+_LOCATION_PAYLOADS_BY_RULE: Dict[str, str] = {
+    'PHP-SSTI-001': '{{7*7}}',
+    'PHP-SSTI-002': '{{7*7}}',
+    'PHP-SSTI-003': "{{ system('id') }}",
+    'PY-FLASK-002': '{{7*7}}',
+    'SSTI-001': '{{7*7}}',
+}
+_LOCATION_PAYLOADS_BY_CATEGORY: Dict[str, str] = {
+    # Injection
+    'Template Injection': '{{7*7}}',
+    'SQL Injection': "' OR 1=1--",
+    'NoSQL Injection': "' || 1==1//",
+    'Command Injection': '; id',
+    'Code Injection': '{{7*7}}',
+    'LDAP Injection': '*)(uid=*))(|(uid=*',
+    'Cross-Site Scripting': '<script>alert(1)</script>',
+    'Path Traversal': '../../../etc/passwd',
+    'File Inclusion': '../../../etc/passwd',
+    'LFI': '../../../etc/passwd',
+    'Server-Side Request Forgery': 'http://169.254.169.254/',
+    'Insecure Deserialization': 'O:8:"stdClass":0:{}',
+    'XML External Entity': '<?xml version="1.0"?><!DOCTYPE x [<!ENTITY xxe SYSTEM "file:///etc/passwd">]<a>&xxe;</a>',
+    'XXE': '<?xml version="1.0"?><!DOCTYPE x [<!ENTITY xxe SYSTEM "file:///etc/passwd">]<a>&xxe;</a>',
+    # Redirect / headers
+    'Open Redirect': '//evil.com',
+    'Header Injection': 'evil.com\\r\\nSet-Cookie: session=xxx',
+    'Host Header Injection': 'evil.com',
+    # Auth / access control
+    'Authentication': "admin' OR '1'='1",
+    'Authentication Bypass': '?admin=1',
+    'Privilege Escalation': '?debug=1',
+    # File / upload
+    'File Upload': '<?php system($_GET["c"]);?>',
+    # Info / config
+    'Information Disclosure': 'verify-exposed-value-in-app',
+    'Misconfiguration': 'verify-setting-in-runtime',
+    'Security Misconfiguration': 'verify-setting-in-runtime',
+    'Weak Cryptography': 'test-weak-hash-collision',
+    'Insecure Randomness': 'predictable-seed-test',
+    # Other
+    'Content Injection': '<script>alert(1)</script>',
+    'Input Handling': "' OR 1=1--",
+    'Prototype Pollution': '__proto__[polluted]=true',
+    'Mass Assignment': '{"isAdmin":true}',
+    'Denial of Service': 'large-input-or-regex-bomb',
+    'Session Management': 'session-id=attacker-session',
+    'CSRF': 'token-from-attacker-site',
+    'Hardcoded Secrets': 'use-disclosed-secret-in-tool',
+    'Remote Code Execution': '; id',
+}
+
+
+def _infer_injection_point(finding: Finding) -> Optional[Tuple[str, str]]:
+    """Infer (source_type, param_name) from finding's code context. Returns None if not detected."""
+    context = '\n'.join(
+        finding.context_before + [finding.line_content] + finding.context_after
+    )
+    for pattern, source_type in _INJECTION_POINT_PATTERNS:
+        m = re.search(pattern, context)
+        if m:
+            param = m.group(1)
+            if source_type == 'header':
+                param = param.replace('_', '-').title()
+            return (source_type, param)
+    return None
+
+
+def _get_location_payload(rule_id: str, category: str) -> Optional[str]:
+    """Get example payload string for this finding type."""
+    return (
+        _LOCATION_PAYLOADS_BY_RULE.get(rule_id)
+        or _LOCATION_PAYLOADS_BY_CATEGORY.get(category)
+    )
+
+
+def _format_location_example(
+    source_type: str, param_name: str, payload: str
+) -> str:
+    """Format a location-specific exploitation example."""
+    from urllib.parse import quote
+    encoded = quote(payload, safe='')
+    if source_type == 'get':
+        return (
+            f"Injection point: GET parameter '{param_name}'\n"
+            f"Example: curl \"http://target/page?{param_name}={encoded}\""
+        )
+    if source_type == 'post':
+        return (
+            f"Injection point: POST parameter '{param_name}'\n"
+            f"Example: curl -X POST -d \"{param_name}={encoded}\" http://target/page"
+        )
+    if source_type == 'request':
+        return (
+            f"Injection point: GET/POST parameter '{param_name}'\n"
+            f"Example: curl \"http://target/page?{param_name}={encoded}\""
+        )
+    if source_type == 'cookie':
+        return (
+            f"Injection point: Cookie '{param_name}'\n"
+            f"Example: curl -H \"Cookie: {param_name}={encoded}\" http://target/page"
+        )
+    if source_type == 'header':
+        return (
+            f"Injection point: Header '{param_name}'\n"
+            f"Example: curl -H \"{param_name}: {payload}\" http://target/page"
+        )
+    if source_type == 'path':
+        return (
+            f"Injection point: Path parameter '{param_name}'\n"
+            f"Example: curl \"http://target/page/{payload}\""
+        )
+    return (
+        f"Injection point: parameter '{param_name}'\n"
+        f"Example: try payload in GET/POST: {param_name}={payload}"
+    )
+
+
 class ReportGenerator:
     """Generate reports from scan results."""
 
@@ -413,6 +555,21 @@ class ReportGenerator:
             # Exploitation guidance
             if show_exploitation and finding.exploitation:
                 print(f"    {c.CRITICAL}⚔️  EXPLOITATION GUIDANCE:{c.RESET}")
+                # Example for this vulnerability: location-specific if we inferred param/header, else generic
+                payload = _get_location_payload(finding.rule_id, finding.category)
+                inj = _infer_injection_point(finding)
+                if payload:
+                    if inj:
+                        source_type, param_name = inj
+                        location_block = _format_location_example(source_type, param_name, payload)
+                        print(f"    ┌─ LOCATION & EXAMPLE (inferred from code) ─────────────────")
+                    else:
+                        location_block = _format_location_example('get', 'param', payload)
+                        print(f"    ┌─ EXAMPLE (try common params: id, q, name, file, template) ─")
+                    for line in location_block.split('\n'):
+                        print(f"    │  {line}")
+                    print(f"    └──────────────────────────────────────────────────────────")
+                    print()
                 for line in finding.exploitation.strip().split('\n'):
                     print(f"    {line}")
                 print()
