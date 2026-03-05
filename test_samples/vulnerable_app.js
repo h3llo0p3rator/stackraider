@@ -171,7 +171,7 @@ const dbConfig = {
     database: 'myapp'
 };
 
-const API_KEY = 'sk_live_abcdefghijklmnopqrstuvwxyz123456';
+const API_KEY = '<STRIPE_API_KEY_PLACEHOLDER>';
 
 // ============================================
 // INFO-001: AWS Access Key
