@@ -13,6 +13,11 @@
 ╚══════════════════════════════════════════════════════════════════╝
 </pre>
 
+## DISCLAIMER!!
+**_I've vibe coded the sh!t out of this app, so there may be dragons inside_**
+
+</br>
+
 **Raid the full application stack — source, traffic, and GraphQL — with offline static analysis and local LLM triage.**
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-3776ab?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
