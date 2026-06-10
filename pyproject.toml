@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stackraider"
+version = "1.0.0"
+description = "Offline pentest platform: static code scan, Burp triangulation, GraphQL audit, local LLM"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "graphql-core>=3.2.0",
+    "ollama>=0.4.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "httpx>=0.27.0",
+    "sse-starlette>=2.0.0",
+    "python-multipart>=0.0.9",
+]
+
+[project.scripts]
+stackraider = "stackraider.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["stackraider*"]

